@@ -1,0 +1,269 @@
+openapi: 3.0.0
+info:
+  title: Skola OnLine API (Unofficial)
+  version: 1.0.1
+  description: Dokumentace API vytvořená na základě analýzy síťového provozu.
+
+servers:
+  - url: https://aplikace.skolaonline.cz/solapi/api
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /connect/token:
+    post:
+      summary: Získání přístupového tokenu
+      description: Odeslání uživatelského jména a hesla. Vrací `access_token`, který se musí posílat v hlavičce všech dalších requestů.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  example: password
+                username:
+                  type: string
+                password:
+                  type: string
+                client_id:
+                  type: string
+                  example: test_client
+                scope:
+                  type: string
+                  example: openid offline_access profile sol_api
+      responses:
+        '200':
+          description: Úspěšné přihlášení.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+
+  /v1/user:
+    get:
+      summary: Informace o uživateli
+      description: Vrátí základní údaje o přihlášeném. Klíčové je získat `personID`, které se vkládá do URL pro známky a úkoly.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  personID:
+                    type: string
+                    description: Unikátní ID studenta (např. D3167532).
+                  fullName:
+                    type: string
+                  userTypeText:
+                    type: string
+
+  /v1/timeTable/codeLists:
+    get:
+      summary: Roky a Pololetí
+      description: Vrátí seznam školních roků a pololetí. Nutné pro zjištění `SemesterId`, aby se známky stahovaly pro aktuální období.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: studentId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  semester:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: ID pololetí (použít ve filtru známek).
+                        name:
+                          type: string
+                        dateFrom:
+                          type: string
+                        dateTo:
+                          type: string
+
+  /v1/students/{studentId}/marks/list:
+    get:
+      summary: Seznam známek
+      description: Vrátí seznam známek. Pozor, vrací odděleně pole známek a pole předmětů (nutno spárovat přes `subjectId`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: SemesterId
+          in: query
+          description: ID aktuálního pololetí..
+          required: false
+          schema:
+            type: string
+        - name: SigningFilter
+          in: query
+          description: Filtr podepsanosti (nechat 'all').
+          schema:
+            type: string
+            default: all
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        subjectId:
+                          type: string
+                        markText:
+                          type: string
+                        theme:
+                          type: string
+                        date:
+                          type: string
+                  subjects:
+                    type: array
+                    description: Řazení předmětů pro přiřazení názvů.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+
+  /v1/timeTable:
+    get:
+      summary: Rozvrh hodin
+      description: Vrátí strukturovaný rozvrh pro zadané období. Data jsou seskupena po dnech.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: StudentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: DateFrom
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: DateTo
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                        schedules:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              beginTime:
+                                type: string
+                              endTime:
+                                type: string
+                              subject:
+                                type: object
+                                properties:
+                                  name:
+                                    type: string
+                              room:
+                                type: object
+                                properties:
+                                  abbrev:
+                                    type: string
+
+  /v1/students/{studentId}/homeworks:
+    get:
+      summary: Domácí úkoly
+      description: Vrátí seznam domácích úkolů. Parametr Filter určuje, zda se vrátí jen aktivní nebo i staré.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Filter
+          in: query
+          schema:
+            type: string
+            enum: [active, all]
+            default: active
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  homeworks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        topic:
+                          type: string
+                        dateTo:
+                          type: string
+                        detailedDescription:
+                          type: string
+                        subject:
+                          type: object
+                          properties:
+                            name:
+                              type: string
